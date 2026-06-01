@@ -24,7 +24,10 @@ body{background:var(--bg);color:var(--text);font-family:Segoe UI,PingFang SC,sys
 canvas#goban{display:block;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.5)}
 .info-panel{background:var(--panel);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);flex:1;min-width:280px;max-width:360px}
 .info-panel h2{font-size:20px;margin-bottom:8px;color:var(--gold)}
-.subtitle{font-size:13px;color:var(--dim);margin-bottom:20px}
+.subtitle{font-size:13px;color:var(--dim);margin-bottom:8px}
+.badge-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.badge{font-size:10px;padding:3px 10px;border-radius:10px;background:rgba(255,255,255,.08);color:var(--dim)}
+.badge.on{background:rgba(76,175,80,.2);color:#4caf50}
 .controls{margin-bottom:20px}
 .btn{display:block;width:100%;padding:12px 20px;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.5px}
 .btn-start{background:linear-gradient(135deg,var(--accent1),#e55a5a);color:#fff}
@@ -32,14 +35,21 @@ canvas#goban{display:block;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.5
 .btn-start:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
 .btn-pause{background:transparent;border:1px solid var(--dim);color:var(--dim);margin-top:8px}
 .btn-pause:hover{border-color:var(--text);color:var(--text)}
+.speed-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.speed-row label{font-size:12px;color:var(--dim)}
+.speed-row input{flex:1;accent-color:var(--gold)}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
 .stat-card{background:rgba(255,255,255,.04);border-radius:8px;padding:14px;text-align:center}
 .stat-card h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:6px}
 .stat-card .value{font-size:22px;font-weight:700}
 .stat-card.bc .value{color:var(--accent1)}
 .stat-card.wc .value{color:var(--accent2)}
-.progress-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.1);margin:8px 0 20px;overflow:hidden}
+.progress-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.1);margin:8px 0 12px;overflow:hidden}
 .progress-fill{height:100%;background:linear-gradient(90deg,#111,#555);border-radius:3px;transition:width .4s}
+.territory-bar{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-bottom:20px}
+.territory-bar .tb{background:#333;transition:flex .5s}
+.territory-bar .tw{background:#ddd;transition:flex .5s}
+.territory-bar .tn{background:rgba(255,255,255,.08);transition:flex .5s}
 .move-log{max-height:200px;overflow-y:auto;border-top:1px solid rgba(255,255,255,.08);padding-top:12px}
 .move-log h3{font-size:13px;color:var(--dim);margin-bottom:8px}
 .move-log .move{font-size:13px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:8px}
@@ -63,51 +73,106 @@ canvas#goban{display:block;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.5
 </div>
 <div class="info-panel">
 <h2>围棋 Go</h2><p class="subtitle">Claude（黑）vs OpenCLAW（白）· 19×19</p>
-<div class="controls"><button class="btn btn-start" id="btn-start" onclick="startGame()">▶ 开始对局</button><button class="btn btn-pause" id="btn-pause" onclick="togglePause()">⏸ 暂停</button></div>
+<div class="badge-row">
+<span class="badge on" id="badge-superko">Superko</span>
+<span class="badge on" id="badge-search">2-Ply Search</span>
+<span class="badge" id="badge-ko">Ko</span>
+</div>
+<div class="controls"><button class="btn btn-start" id="btn-start" onclick="startGame()">▶ 开始对局</button><button class="btn btn-pause" id="btn-pause" onclick="togglePause()">⏸ 暂停</button>
+<div class="speed-row"><label>慢</label><input type="range" id="speed-slider" min="1" max="10" value="6" oninput="updateSpeed()"><label>快</label></div>
+</div>
 <div class="stats"><div class="stat-card bc"><h3>黑方提子</h3><div class="value" id="captures-black">0</div></div><div class="stat-card wc"><h3>白方提子</h3><div class="value" id="captures-white">0</div></div></div>
 <div class="progress-bar"><div class="progress-fill" id="progress-bar" style="width:0%"></div></div>
+<div class="territory-bar"><div class="tb" id="terr-black" style="flex:50"></div><div class="tn" style="flex:0"></div><div class="tw" id="terr-white" style="flex:50"></div></div>
 <div class="move-log" id="move-log"><h3>棋谱</h3></div>
 <div class="event-bar"><span class="dot done"></span><span id="event-text">准备就绪，点击开始</span></div>
 </div>
 </div>
 <script>
 "use strict";
-class GoGame{constructor(size=19){this.size=size;this.board=Array.from({length:size},()=>new Array(size).fill(0));this.moveHistory=[];this.captures=[0,0];this.koPoint=null;this.currentPlayer=1;this.gameOver=false;this.passes=0}
-clone(){const g=new GoGame(this.size);g.board=this.board.map(r=>[...r]);g.moveHistory=[...this.moveHistory];g.captures=[...this.captures];g.koPoint=this.koPoint?{...this.koPoint}:null;g.currentPlayer=this.currentPlayer;g.gameOver=this.gameOver;g.passes=this.passes;return g}
-inBounds(r,c){return r>=0&&r<this.size&&c>=0&&c<this.size}
-neighbors(r,c){return[[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([nr,nc])=>this.inBounds(nr,nc))}
-getGroup(r,c){const color=this.board[r][c];if(color===0)return[];const group=[],visited=new Set(),stack=[[r,c]];while(stack.length>0){const[cr,cc]=stack.pop(),key=cr*this.size+cc;if(visited.has(key))continue;visited.add(key);group.push([cr,cc]);for(const[nr,nc]of this.neighbors(cr,cc))if(this.board[nr][nc]===color&&!visited.has(nr*this.size+nc))stack.push([nr,nc])}return group}
-countLiberties(group){const libs=new Set();for(const[r,c]of group)for(const[nr,nc]of this.neighbors(r,c))if(this.board[nr][nc]===0)libs.add(nr*this.size+nc);return libs.size}
-isLegalMove(r,c){if(!this.inBounds(r,c)||this.board[r][c]!==0)return false;if(this.koPoint&&this.koPoint.row===r&&this.koPoint.col===c)return false;const test=this.clone();test.board[r][c]=test.currentPlayer;const opp=test.currentPlayer===1?2:1;for(const[nr,nc]of test.neighbors(r,c))if(test.board[nr][nc]===opp){const grp=test.getGroup(nr,nc);if(test.countLiberties(grp)===0)for(const[gr,gc]of grp)test.board[gr][gc]=0}const own=test.getGroup(r,c);if(test.countLiberties(own)===0)return false;return true}
-play(r,c){if(!this.isLegalMove(r,c))return null;const captured=[];this.board[r][c]=this.currentPlayer;this.koPoint=null;this.passes=0;const opp=this.currentPlayer===1?2:1;for(const[nr,nc]of this.neighbors(r,c))if(this.board[nr][nc]===opp){const grp=this.getGroup(nr,nc);if(this.countLiberties(grp)===0)for(const[gr,gc]of grp){this.board[gr][gc]=0;captured.push([gr,gc])}}this.captures[this.currentPlayer-1]+=captured.length;if(captured.length===1){const own=this.getGroup(r,c);if(own.length===1&&this.countLiberties(own)===1)this.koPoint=captured[0]}const move={row:r,col:c,player:this.currentPlayer,moveNum:this.moveHistory.length+1,captured:captured.length};this.moveHistory.push(move);this.currentPlayer=this.currentPlayer===1?2:1;return move}
-pass(){this.koPoint=null;this.passes++;this.moveHistory.push({row:-1,col:-1,player:this.currentPlayer,moveNum:this.moveHistory.length+1,captured:0,pass:true});this.currentPlayer=this.currentPlayer===1?2:1;if(this.passes>=2)this.gameOver=true}
-getLegalMoves(){const m=[];for(let r=0;r<this.size;r++)for(let c=0;c<this.size;c++)if(this.isLegalMove(r,c))m.push({row:r,col:c});return m}
-estimateTerritory(){const vis=Array.from({length:this.size},()=>new Array(this.size).fill(false));let b=0,w=0;for(let r=0;r<this.size;r++)for(let c=0;c<this.size;c++){if(this.board[r][c]!==0||vis[r][c])continue;const reg=[],borders=new Set(),stack=[[r,c]];vis[r][c]=true;while(stack.length>0){const[cr,cc]=stack.pop();reg.push([cr,cc]);for(const[nr,nc]of this.neighbors(cr,cc)){if(this.board[nr][nc]===0&&!vis[nr][nc]){vis[nr][nc]=true;stack.push([nr,nc])}else if(this.board[nr][nc]!==0)borders.add(this.board[nr][nc])}}if(borders.size===1){const o=[...borders][0];if(o===1)b+=reg.length;else w+=reg.length}}return{black:b,white:w}}}
+// ━━━ Go Engine (with OpenCLAW's Superko) ━━━
+class GoGame{
+  constructor(size=19){
+    this.size=size;this.board=Array.from({length:size},()=>new Array(size).fill(0));
+    this.moveHistory=[];this.captures=[0,0];this.koPoint=null;
+    this.currentPlayer=1;this.gameOver=false;this.passes=0;
+    this.boardHistory=new Set();this._recordBoardHash();
+  }
+  clone(){const g=new GoGame(this.size);g.board=this.board.map(r=>[...r]);g.moveHistory=[...this.moveHistory];g.captures=[...this.captures];g.koPoint=this.koPoint?{...this.koPoint}:null;g.currentPlayer=this.currentPlayer;g.gameOver=this.gameOver;g.passes=this.passes;g.boardHistory=new Set(this.boardHistory);return g}
+  inBounds(r,c){return r>=0&&r<this.size&&c>=0&&c<this.size}
+  neighbors(r,c){return[[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([nr,nc])=>this.inBounds(nr,nc))}
+  getGroup(r,c){const color=this.board[r][c];if(color===0)return[];const group=[],visited=new Set(),stack=[[r,c]];while(stack.length>0){const[cr,cc]=stack.pop(),key=cr*this.size+cc;if(visited.has(key))continue;visited.add(key);group.push([cr,cc]);for(const[nr,nc]of this.neighbors(cr,cc))if(this.board[nr][nc]===color&&!visited.has(nr*this.size+nc))stack.push([nr,nc])}return group}
+  countLiberties(group){const libs=new Set();for(const[r,c]of group)for(const[nr,nc]of this.neighbors(r,c))if(this.board[nr][nc]===0)libs.add(nr*this.size+nc);return libs.size}
+  _boardHash(){let h='';for(let r=0;r<this.size;r++){for(let c=0;c<this.size;c++)h+=this.board[r][c];h+='|'}h+=this.captures[0]+','+this.captures[1]+','+this.currentPlayer;return h}
+  _recordBoardHash(){this.boardHistory.add(this._boardHash())}
+  checkSuperko(r,c){const test=this.clone();test.board[r][c]=test.currentPlayer;const opp=test.currentPlayer===1?2:1;for(const[nr,nc]of test.neighbors(r,c))if(test.board[nr][nc]===opp){const grp=test.getGroup(nr,nc);if(test.countLiberties(grp)===0)for(const[gr,gc]of grp)test.board[gr][gc]=0}const own=test.getGroup(r,c);if(test.countLiberties(own)===0)return false;test.captures[test.currentPlayer-1]+=test.board.reduce((s,row,i)=>s+row.filter((v,j)=>v===0&&this.board[i][j]===opp).length,0);test.currentPlayer=test.currentPlayer===1?2:1;const h=test._boardHash();return!this.boardHistory.has(h)}
+  isLegalMove(r,c){if(!this.inBounds(r,c)||this.board[r][c]!==0)return false;if(this.koPoint&&this.koPoint.row===r&&this.koPoint.col===c)return false;if(!this.checkSuperko(r,c))return false;return true}
+  play(r,c){if(!this.isLegalMove(r,c))return null;this._recordBoardHash();const captured=[];this.board[r][c]=this.currentPlayer;this.koPoint=null;this.passes=0;const opp=this.currentPlayer===1?2:1;for(const[nr,nc]of this.neighbors(r,c))if(this.board[nr][nc]===opp){const grp=this.getGroup(nr,nc);if(this.countLiberties(grp)===0)for(const[gr,gc]of grp){this.board[gr][gc]=0;captured.push([gr,gc])}}this.captures[this.currentPlayer-1]+=captured.length;if(captured.length===1){const own=this.getGroup(r,c);if(own.length===1&&this.countLiberties(own)===1)this.koPoint=captured[0]}const move={row:r,col:c,player:this.currentPlayer,moveNum:this.moveHistory.length+1,captured:captured.length};this.moveHistory.push(move);this.currentPlayer=this.currentPlayer===1?2:1;return move}
+  pass(){this.boardHistory.add(this._boardHash());this.koPoint=null;this.passes++;this.moveHistory.push({row:-1,col:-1,player:this.currentPlayer,moveNum:this.moveHistory.length+1,captured:0,pass:true});this.currentPlayer=this.currentPlayer===1?2:1;if(this.passes>=2)this.gameOver=true}
+  getLegalMoves(){const m=[];for(let r=0;r<this.size;r++)for(let c=0;c<this.size;c++)if(this.isLegalMove(r,c))m.push({row:r,col:c});return m}
+  estimateTerritory(){const vis=Array.from({length:this.size},()=>new Array(this.size).fill(false));let b=0,w=0;for(let r=0;r<this.size;r++)for(let c=0;c<this.size;c++){if(this.board[r][c]!==0||vis[r][c])continue;const reg=[],borders=new Set(),stack=[[r,c]];vis[r][c]=true;while(stack.length>0){const[cr,cc]=stack.pop();reg.push([cr,cc]);for(const[nr,nc]of this.neighbors(cr,cc)){if(this.board[nr][nc]===0&&!vis[nr][nc]){vis[nr][nc]=true;stack.push([nr,nc])}else if(this.board[nr][nc]!==0)borders.add(this.board[nr][nc])}}if(borders.size===1){const o=[...borders][0];if(o===1)b+=reg.length;else w+=reg.length}}return{black:b,white:w}}
+}
 
-class GoAI{constructor(playerColor,style='balanced'){this.playerColor=playerColor;this.style=style}
-evaluateMove(game,r,c){const opp=this.playerColor===1?2:1;let score=0;const test=game.clone();test.board[r][c]=this.playerColor;let caps=0;for(const[nr,nc]of test.neighbors(r,c)){if(test.board[nr][nc]===opp){const g=test.getGroup(nr,nc);if(test.countLiberties(g)===0)caps+=g.length}}score+=caps*25;const own=test.getGroup(r,c);if(test.countLiberties(own)<=1)score-=40;let inf=0;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){if(dr===0&&dc===0)continue;const d=Math.abs(dr)+Math.abs(dc),nr=r+dr,nc=c+dc;if(!game.inBounds(nr,nc))continue;if(game.board[nr][nc]===this.playerColor)inf+=(3-d)*4;else if(game.board[nr][nc]===opp)inf-=(3-d)*4}score+=inf*(this.style==='territorial'?1.5:1);let ep=0;for(let dr=-3;dr<=3;dr++)for(let dc=-3;dc<=3;dc++){const d=Math.abs(dr)+Math.abs(dc);if(d===0||d>3)continue;const nr=r+dr,nc=c+dc;if(game.inBounds(nr,nc)&&game.board[nr][nc]===opp)ep+=(4-d)*3}score+=ep*(this.style==='aggressive'?1.3:1);const ct=(game.size-1)/2,dc2=Math.abs(r-ct)+Math.abs(c-ct);score+=Math.max(0,10-dc2)*0.5;if(r===0||r===game.size-1||c===0||c===game.size-1)score-=3;let fp=0;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){const d=Math.abs(dr)+Math.abs(dc);if(d===0||d>2)continue;const nr=r+dr,nc=c+dc;if(game.inBounds(nr,nc)&&game.board[nr][nc]===this.playerColor)fp+=(3-d)*2}score+=fp*0.8;score+=Math.random()*8;return score}
-selectMove(game){const moves=game.getLegalMoves();if(moves.length===0)return null;if(game.moveHistory.length<6){const sp=[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]],es=sp.filter(([r,c])=>game.board[r][c]===0);if(es.length>0){const[r,c]=es[Math.floor(Math.random()*es.length)];return{row:r,col:c,score:100}}}const scored=moves.map(m=>({...m,score:this.evaluateMove(game,m.row,m.col)}));scored.sort((a,b)=>b.score-a.score);return scored[Math.floor(Math.random()*Math.min(3,Math.min(5,scored.length)))]}}
+// ━━━ Go AI (with OpenCLAW's 2-ply minimax search) ━━━
+class GoAI{
+  constructor(playerColor,style='balanced'){this.playerColor=playerColor;this.style=style;this.nodesEvaluated=0}
+  evaluateMove(game,r,c){const opp=this.playerColor===1?2:1;let score=0;const test=game.clone();test.board[r][c]=this.playerColor;let caps=0;for(const[nr,nc]of test.neighbors(r,c)){if(test.board[nr][nc]===opp){const g=test.getGroup(nr,nc);if(test.countLiberties(g)===0)caps+=g.length}}score+=caps*25;const own=test.getGroup(r,c);if(test.countLiberties(own)<=1)score-=40;let inf=0;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){if(dr===0&&dc===0)continue;const d=Math.abs(dr)+Math.abs(dc),nr=r+dr,nc=c+dc;if(!game.inBounds(nr,nc))continue;if(game.board[nr][nc]===this.playerColor)inf+=(3-d)*4;else if(game.board[nr][nc]===opp)inf-=(3-d)*4}score+=inf*(this.style==='territorial'?1.5:1);let ep=0;for(let dr=-3;dr<=3;dr++)for(let dc=-3;dc<=3;dc++){const d=Math.abs(dr)+Math.abs(dc);if(d===0||d>3)continue;const nr=r+dr,nc=c+dc;if(game.inBounds(nr,nc)&&game.board[nr][nc]===opp)ep+=(4-d)*3}score+=ep*(this.style==='aggressive'?1.3:1);const ct=(game.size-1)/2,dc2=Math.abs(r-ct)+Math.abs(c-ct);score+=Math.max(0,10-dc2)*0.5;if(r===0||r===game.size-1||c===0||c===game.size-1)score-=3;let fp=0;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){const d=Math.abs(dr)+Math.abs(dc);if(d===0||d>2)continue;const nr=r+dr,nc=c+dc;if(game.inBounds(nr,nc)&&game.board[nr][nc]===this.playerColor)fp+=(3-d)*2}score+=fp*0.8;score+=Math.random()*4;return score}
+  deeperSearch(game,depth=2){this.nodesEvaluated=0;const moves=game.getLegalMoves();if(moves.length===0)return null;if(moves.length>60){const scored=moves.map(m=>({...m,score:this.evaluateMove(game,m.row,m.col)}));scored.sort((a,b)=>b.score-a.score);const topMoves=scored.slice(0,20);return this._minimax(game,topMoves,depth,true)}const topMoves=moves;return this._minimax(game,topMoves,depth,true)}
+  _minimax(game,candidates,depth,isMyTurn){let bestMove=candidates[0],bestScore=isMyTurn?-Infinity:Infinity;this.nodesEvaluated+=candidates.length;for(const m of candidates){const sim=game.clone();sim.board[m.row][m.col]=sim.currentPlayer;const opp=sim.currentPlayer===1?2:1;let anyCaptured=false;for(const[nr,nc]of sim.neighbors(m.row,m.col))if(sim.board[nr][nc]===opp){const grp=sim.getGroup(nr,nc);if(sim.countLiberties(grp)===0){for(const[gr,gc]of grp)sim.board[gr][gc]=0;anyCaptured=true}}sim.currentPlayer=sim.currentPlayer===1?2:1;let score;if(depth>1){const oppMoves=sim.getLegalMoves();if(oppMoves.length>0&&oppMoves.length<80){const scoredOpp=oppMoves.slice(0,Math.min(30,oppMoves.length)).map(om=>({...om,score:this.evaluateMove(sim,om.row,om.col)}));scoredOpp.sort((a,b)=>b.score-a.score);const bestOpp=scoredOpp[0];score=bestOpp?bestOpp.score*-1:this.evaluateMove(game,m.row,m.col)}else{score=this.evaluateMove(game,m.row,m.col)}}else{score=this.evaluateMove(game,m.row,m.col)}if(isMyTurn){if(score>bestScore){bestScore=score;bestMove=m}}else{if(score<bestScore){bestScore=score;bestMove=m}}}return bestMove}
+  selectMove(game){const moves=game.getLegalMoves();if(moves.length===0)return null;if(game.moveHistory.length<6){const sp=[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]],es=sp.filter(([r,c])=>game.board[r][c]===0);if(es.length>0){const[r,c]=es[Math.floor(Math.random()*es.length)];return{row:r,col:c,score:100}}}if(moves.length<40&&game.moveHistory.length>20)return this.deeperSearch(game,2);const scored=moves.map(m=>({...m,score:this.evaluateMove(game,m.row,m.col)}));scored.sort((a,b)=>b.score-a.score);return scored[Math.floor(Math.random()*Math.min(3,Math.min(5,scored.length)))]}
+}
 
-class BoardRenderer{constructor(canvasId,game){this.canvas=document.getElementById(canvasId);this.ctx=this.canvas.getContext('2d');this.game=game;this.padding=40;this.lastMove=null;this.resize()}
-resize(){const mx=Math.min(620,window.innerWidth-60);this.canvas.width=mx;this.canvas.height=mx;this.cellSize=(mx-this.padding*2)/(this.game.size-1);this.stoneRadius=this.cellSize*0.44;this.draw()}
-boardToPixel(r,c){return{x:this.padding+c*this.cellSize,y:this.padding+r*this.cellSize}}
-draw(){const ctx=this.ctx,w=this.canvas.width,h=this.canvas.height,pad=this.padding,cs=this.cellSize,size=this.game.size;const wg=ctx.createLinearGradient(0,0,w,h);wg.addColorStop(0,'#e8c776');wg.addColorStop(0.5,'#dcb35c');wg.addColorStop(1,'#c9a040');ctx.fillStyle=wg;ctx.fillRect(0,0,w,h);ctx.strokeStyle='rgba(139,100,50,0.08)';ctx.lineWidth=1;for(let i=0;i<h;i+=3){ctx.beginPath();ctx.moveTo(0,i+Math.sin(i*0.05)*2);ctx.lineTo(w,i+Math.sin(i*0.05+1)*2);ctx.stroke()}ctx.strokeStyle='#5a3e28';ctx.lineWidth=1;for(let i=0;i<size;i++){const p=pad+i*cs;ctx.beginPath();ctx.moveTo(pad,p);ctx.lineTo(pad+(size-1)*cs,p);ctx.stroke();ctx.beginPath();ctx.moveTo(p,pad);ctx.lineTo(p,pad+(size-1)*cs);ctx.stroke()}ctx.fillStyle='#3a2210';for(const[r,c]of[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]]){const{x,y}=this.boardToPixel(r,c);ctx.beginPath();ctx.arc(x,y,cs*0.1,0,Math.PI*2);ctx.fill()}for(let r=0;r<size;r++)for(let c=0;c<size;c++){if(this.game.board[r][c]!==0)continue;const bd=new Set();for(const[nr,nc]of this.game.neighbors(r,c))if(this.game.board[nr][nc]!==0)bd.add(this.game.board[nr][nc]);if(bd.size===1){const{x,y}=this.boardToPixel(r,c);ctx.fillStyle=[...bd][0]===1?'rgba(30,30,30,0.18)':'rgba(255,255,255,0.22)';ctx.fillRect(x-cs*0.4,y-cs*0.4,cs*0.8,cs*0.8)}}if(this.game.koPoint){const{x,y}=this.boardToPixel(this.game.koPoint.row,this.game.koPoint.col);ctx.strokeStyle='#ff4444';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.beginPath();ctx.arc(x,y,this.stoneRadius+4,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}for(let r=0;r<size;r++)for(let c=0;c<size;c++){if(this.game.board[r][c]===0)continue;const{x,y}=this.boardToPixel(r,c);this.drawStone(ctx,x,y,this.game.board[r][c])}const rc=Math.min(20,this.game.moveHistory.length);for(let i=this.game.moveHistory.length-rc;i<this.game.moveHistory.length;i++){const m=this.game.moveHistory[i];if(m.row<0)continue;const{x,y}=this.boardToPixel(m.row,m.col);ctx.fillStyle=m.player===1?'#fff':'#222';ctx.font=`bold ${cs*0.3}px "Segoe UI", sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(m.moveNum,x,y)}if(this.lastMove&&this.lastMove.row>=0){const{x,y}=this.boardToPixel(this.lastMove.row,this.lastMove.col);ctx.strokeStyle='#ff3333';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,this.stoneRadius+2,0,Math.PI*2);ctx.stroke()}}
-drawStone(ctx,x,y,color){const r=this.stoneRadius;ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.arc(x+2,y+2,r,0,Math.PI*2);ctx.fill();if(color===1){const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);g.addColorStop(0,'#5a5a5a');g.addColorStop(0.6,'#2a2a2a');g.addColorStop(1,'#0a0a0a');ctx.fillStyle=g}else{const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);g.addColorStop(0,'#ffffff');g.addColorStop(0.6,'#e8e8e8');g.addColorStop(1,'#c0c0c0');ctx.fillStyle=g}ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle=color===1?'rgba(80,80,80,0.5)':'rgba(180,180,180,0.5)';ctx.lineWidth=0.8;ctx.stroke()}}
+// ━━━ Board Renderer ━━━
+class BoardRenderer{
+  constructor(canvasId,game){this.canvas=document.getElementById(canvasId);this.ctx=this.canvas.getContext('2d');this.game=game;this.padding=40;this.lastMove=null;this.resize()}
+  resize(){const mx=Math.min(620,window.innerWidth-60);this.canvas.width=mx;this.canvas.height=mx;this.cellSize=(mx-this.padding*2)/(this.game.size-1);this.stoneRadius=this.cellSize*0.44;this.draw()}
+  boardToPixel(r,c){return{x:this.padding+c*this.cellSize,y:this.padding+r*this.cellSize}}
+  draw(){const ctx=this.ctx,w=this.canvas.width,h=this.canvas.height,pad=this.padding,cs=this.cellSize,size=this.game.size;const wg=ctx.createLinearGradient(0,0,w,h);wg.addColorStop(0,'#e8c776');wg.addColorStop(0.5,'#dcb35c');wg.addColorStop(1,'#c9a040');ctx.fillStyle=wg;ctx.fillRect(0,0,w,h);ctx.strokeStyle='rgba(139,100,50,0.08)';ctx.lineWidth=1;for(let i=0;i<h;i+=3){ctx.beginPath();ctx.moveTo(0,i+Math.sin(i*0.05)*2);ctx.lineTo(w,i+Math.sin(i*0.05+1)*2);ctx.stroke()}ctx.strokeStyle='#5a3e28';ctx.lineWidth=1;for(let i=0;i<size;i++){const p=pad+i*cs;ctx.beginPath();ctx.moveTo(pad,p);ctx.lineTo(pad+(size-1)*cs,p);ctx.stroke();ctx.beginPath();ctx.moveTo(p,pad);ctx.lineTo(p,pad+(size-1)*cs);ctx.stroke()}ctx.fillStyle='#3a2210';for(const[r,c]of[[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]]){const{x,y}=this.boardToPixel(r,c);ctx.beginPath();ctx.arc(x,y,cs*0.1,0,Math.PI*2);ctx.fill()}for(let r=0;r<size;r++)for(let c=0;c<size;c++){if(this.game.board[r][c]!==0)continue;const bd=new Set();for(const[nr,nc]of this.game.neighbors(r,c))if(this.game.board[nr][nc]!==0)bd.add(this.game.board[nr][nc]);if(bd.size===1){const{x,y}=this.boardToPixel(r,c);ctx.fillStyle=[...bd][0]===1?'rgba(30,30,30,0.18)':'rgba(255,255,255,0.22)';ctx.fillRect(x-cs*0.4,y-cs*0.4,cs*0.8,cs*0.8)}}if(this.game.koPoint){const{x,y}=this.boardToPixel(this.game.koPoint.row,this.game.koPoint.col);ctx.strokeStyle='#ff4444';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.beginPath();ctx.arc(x,y,this.stoneRadius+4,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}for(let r=0;r<size;r++)for(let c=0;c<size;c++){if(this.game.board[r][c]===0)continue;const{x,y}=this.boardToPixel(r,c);this.drawStone(ctx,x,y,this.game.board[r][c])}const rc=Math.min(20,this.game.moveHistory.length);for(let i=this.game.moveHistory.length-rc;i<this.game.moveHistory.length;i++){const m=this.game.moveHistory[i];if(m.row<0)continue;const{x,y}=this.boardToPixel(m.row,m.col);ctx.fillStyle=m.player===1?'#fff':'#222';ctx.font=`bold ${cs*0.3}px "Segoe UI", sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(m.moveNum,x,y)}if(this.lastMove&&this.lastMove.row>=0){const{x,y}=this.boardToPixel(this.lastMove.row,this.lastMove.col);ctx.strokeStyle='#ff3333';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,this.stoneRadius+2,0,Math.PI*2);ctx.stroke()}}
+  drawStone(ctx,x,y,color){const r=this.stoneRadius;ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.arc(x+2,y+2,r,0,Math.PI*2);ctx.fill();if(color===1){const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);g.addColorStop(0,'#5a5a5a');g.addColorStop(0.6,'#2a2a2a');g.addColorStop(1,'#0a0a0a');ctx.fillStyle=g}else{const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);g.addColorStop(0,'#ffffff');g.addColorStop(0.6,'#e8e8e8');g.addColorStop(1,'#c0c0c0');ctx.fillStyle=g}ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.strokeStyle=color===1?'rgba(80,80,80,0.5)':'rgba(180,180,180,0.5)';ctx.lineWidth=0.8;ctx.stroke()}
+}
 
+// ━━━ Game Controller ━━━
 const game=new GoGame(19),renderer=new BoardRenderer('goban',game);
 const aiBlack=new GoAI(1,'balanced'),aiWhite=new GoAI(2,'aggressive');
 let running=false,paused=false,moveDelay=600,timerId=null;
 
-function updateUI(){document.getElementById('tag-black').classList.toggle('active',game.currentPlayer===1&&!game.gameOver);document.getElementById('tag-white').classList.toggle('active',game.currentPlayer===2&&!game.gameOver);document.getElementById('captures-black').textContent=game.captures[0];document.getElementById('captures-white').textContent=game.captures[1];document.getElementById('progress-bar').style.width=Math.min(100,game.moveHistory.length*0.4)+'%';const log=document.getElementById('move-log'),rec=game.moveHistory.slice(-10);let h='<h3>棋谱</h3>';for(const m of rec){const cls=m.player===1?'black-move':'white-move',coord=m.row>=0?String.fromCharCode(65+m.col)+(game.size-m.row):'Pass';h+='<div class="move '+cls+'"><span class="move-num">'+m.moveNum+'</span> '+coord+(m.captured>0?' +'+m.captured:'')+(m.pass?' (Pass)':'')+'</div>'}log.innerHTML=h;log.scrollTop=log.scrollHeight;const et=document.getElementById('event-text'),dot=document.querySelector('.event-bar .dot');if(game.gameOver){et.textContent='对局结束';dot.className='dot done'}else if(running&&!paused){et.textContent=(game.currentPlayer===1?'Claude（黑）':'OpenCLAW（白）')+'思考中…';dot.className='dot thinking'}}
+function updateSpeed(){moveDelay=1100-parseInt(document.getElementById('speed-slider').value)*100}
 
-function makeAIMove(){if(!running||paused||game.gameOver)return;const ai=game.currentPlayer===1?aiBlack:aiWhite,move=ai.selectMove(game);if(move&&game.isLegalMove(move.row,move.col)){const r=game.play(move.row,move.col);renderer.lastMove=r}else{game.pass();renderer.lastMove=null}renderer.draw();updateUI();if(game.gameOver){endGame();return}scheduleNextMove()}
+function updateUI(){
+  document.getElementById('tag-black').classList.toggle('active',game.currentPlayer===1&&!game.gameOver);
+  document.getElementById('tag-white').classList.toggle('active',game.currentPlayer===2&&!game.gameOver);
+  document.getElementById('captures-black').textContent=game.captures[0];
+  document.getElementById('captures-white').textContent=game.captures[1];
+  document.getElementById('progress-bar').style.width=Math.min(100,game.moveHistory.length*0.4)+'%';
+  const terr=game.estimateTerritory(),total=Math.max(1,terr.black+terr.white);
+  document.getElementById('terr-black').style.flex=terr.black/total*100;
+  document.getElementById('terr-white').style.flex=terr.white/total*100;
+  document.getElementById('badge-ko').className=game.koPoint?'badge':'badge on';
+  document.getElementById('badge-superko').className='badge on';
+  document.getElementById('badge-search').className=(game.moveHistory.length>20&&game.getLegalMoves().length<40)?'badge on':'badge';
+  const log=document.getElementById('move-log'),rec=game.moveHistory.slice(-10);
+  let h='<h3>棋谱</h3>';
+  for(const m of rec){const cls=m.player===1?'black-move':'white-move',coord=m.row>=0?String.fromCharCode(65+m.col)+(game.size-m.row):'Pass';h+='<div class="move '+cls+'"><span class="move-num">'+m.moveNum+'</span> '+coord+(m.captured>0?' +'+m.captured:'')+(m.pass?' (Pass)':'')+'</div>'}
+  log.innerHTML=h;log.scrollTop=log.scrollHeight;
+  const et=document.getElementById('event-text'),dot=document.querySelector('.event-bar .dot');
+  if(game.gameOver){et.textContent='对局结束';dot.className='dot done'}
+  else if(running&&!paused){const info=game.moveHistory.length>20&&game.getLegalMoves().length<40?' [2-ply]':'';et.textContent=(game.currentPlayer===1?'Claude（黑）':'OpenCLAW（白）')+'思考中…'+info;dot.className='dot thinking'}
+}
+
+function makeAIMove(){
+  if(!running||paused||game.gameOver)return;
+  const ai=game.currentPlayer===1?aiBlack:aiWhite,move=ai.selectMove(game);
+  if(move&&game.isLegalMove(move.row,move.col)){const r=game.play(move.row,move.col);renderer.lastMove=r}
+  else{game.pass();renderer.lastMove=null}
+  renderer.draw();updateUI();
+  if(game.gameOver){endGame();return}scheduleNextMove();
+}
 function scheduleNextMove(){if(timerId)clearTimeout(timerId);timerId=setTimeout(()=>makeAIMove(),moveDelay)}
 function startGame(){if(running)return;running=true;paused=false;document.getElementById('btn-start').textContent='对局中…';document.getElementById('btn-start').disabled=true;document.getElementById('event-text').textContent='Claude（黑）思考中…';document.querySelector('.event-bar .dot').className='dot thinking';updateUI();scheduleNextMove()}
 function togglePause(){if(!running)return;paused=!paused;document.getElementById('btn-pause').textContent=paused?'▶ 继续':'⏸ 暂停';if(!paused){document.getElementById('event-text').textContent=(game.currentPlayer===1?'Claude（黑）':'OpenCLAW（白）')+'思考中…';document.querySelector('.event-bar .dot').className='dot thinking';scheduleNextMove()}else{if(timerId)clearTimeout(timerId);document.getElementById('event-text').textContent='已暂停';document.querySelector('.event-bar .dot').className='dot done'}}
-function endGame(){running=false;if(timerId)clearTimeout(timerId);const terr=game.estimateTerritory(),bs=terr.black+game.captures[0],ws=terr.white+game.captures[1]+6.5;const w=bs>ws?'Claude 胜！':ws>bs?'OpenCLAW 胜！':'平局！';document.getElementById('event-text').textContent='终局 · 黑: '+bs.toFixed(1)+' vs 白: '+ws.toFixed(1)+' · '+w;document.querySelector('.event-bar .dot').className='dot done';document.getElementById('btn-start').textContent='🔄 重新开始';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').onclick=resetGame;updateUI()}
-function resetGame(){const ng=new GoGame(19);Object.assign(game,ng);game.board=ng.board.map(r=>[...r]);game.moveHistory=[];game.captures=[0,0];game.koPoint=null;game.currentPlayer=1;game.gameOver=false;game.passes=0;renderer.game=game;renderer.lastMove=null;renderer.draw();running=false;paused=false;if(timerId)clearTimeout(timerId);document.getElementById('btn-start').textContent='▶ 开始对局';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').onclick=startGame;document.getElementById('event-text').textContent='准备就绪，点击开始';document.querySelector('.event-bar .dot').className='dot done';updateUI()}
-
-renderer.draw();updateUI();
+function endGame(){running=false;if(timerId)clearTimeout(timerId);const terr=game.estimateTerritory(),bs=terr.black+game.captures[0],ws=terr.white+game.captures[1]+6.5,w=bs>ws?'Claude 胜！':ws>bs?'OpenCLAW 胜！':'平局！';document.getElementById('event-text').textContent='终局 · 黑: '+bs.toFixed(1)+' vs 白: '+ws.toFixed(1)+' · '+w;document.querySelector('.event-bar .dot').className='dot done';document.getElementById('btn-start').textContent='🔄 重新开始';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').onclick=resetGame;updateUI()}
+function resetGame(){const ng=new GoGame(19);Object.assign(game,ng);game.board=ng.board.map(r=>[...r]);game.moveHistory=[];game.captures=[0,0];game.koPoint=null;game.currentPlayer=1;game.gameOver=false;game.passes=0;game.boardHistory=new Set();game._recordBoardHash();renderer.game=game;renderer.lastMove=null;renderer.draw();running=false;paused=false;if(timerId)clearTimeout(timerId);document.getElementById('btn-start').textContent='▶ 开始对局';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').onclick=startGame;document.getElementById('event-text').textContent='准备就绪，点击开始';document.querySelector('.event-bar .dot').className='dot done';updateUI()}
+renderer.draw();updateUI();updateSpeed();
 document.addEventListener('keydown',e=>{if(e.key===' '){e.preventDefault();if(!running)startGame();else togglePause()}if(e.key==='r'||e.key==='R')resetGame()});
 window.addEventListener('resize',()=>{renderer.resize();renderer.draw()});
 </script>
