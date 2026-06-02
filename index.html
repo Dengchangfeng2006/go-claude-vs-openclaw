@@ -73,7 +73,7 @@ canvas#goban.human-turn{cursor:crosshair}
 <div class="container">
 <div class="board-panel">
 <div class="board-header">
-<div class="player-tag black active" id="tag-black"><div class="stone black-stone"></div><div><div class="name">Claude<div class="level" id="level-black">Lv.5</div></div><div class="label">黑棋 · Black</div></div></div>
+<div class="player-tag black active" id="tag-black"><div class="stone black-stone"></div><div><div class="name">Claude<div class="level" id="level-black">Lv.5</div></div><div class="label">黑棋 · Black</div><div id="ladder-panel" style="margin-top:8px;padding:10px;background:rgba(201,169,110,.08);border:1px solid rgba(201,169,110,.2);border-radius:8px;font-size:12px;text-align:center"><div style="font-size:16px;font-weight:700;color:#c9a96e" id="rank-display">30k</div><div style="color:var(--dim);font-size:11px">Ranked Ladder</div></div></div></div>
 <div class="player-tag white" id="tag-white"><div class="stone white-stone"></div><div style="text-align:right"><div class="name">OpenCLAW<div class="level" id="level-white">Lv.5</div></div><div class="label">白棋 · White</div></div></div>
 </div>
 <canvas id="goban"></canvas>
@@ -85,16 +85,16 @@ canvas#goban.human-turn{cursor:crosshair}
 <button class="mode-btn" id="mode-human-b" onclick="setMode('human-b')">🧑 人执黑</button>
 <button class="mode-btn" id="mode-human-w" onclick="setMode('human-w')">🧑 人执白</button>
 </div>
-<div class="diff-row"><label>Claude 难度</label><select id="diff-black" onchange="setDifficulty()"><option value="1">Lv.1 入门</option><option value="2">Lv.2 初级</option><option value="3">Lv.3 进阶</option><option value="4">Lv.4 中级</option><option value="5" selected>Lv.5 均衡</option><option value="6">Lv.6 熟练</option><option value="7">Lv.7 高级</option><option value="8">Lv.8 专家</option><option value="9">Lv.9 大师</option></select></div>
-<div class="diff-row"><label>OpenCLAW 难度</label><select id="diff-white" onchange="setDifficulty()"><option value="1">Lv.1 入门</option><option value="2">Lv.2 初级</option><option value="3">Lv.3 进阶</option><option value="4">Lv.4 中级</option><option value="5" selected>Lv.5 均衡</option><option value="6">Lv.6 熟练</option><option value="7">Lv.7 高级</option><option value="8">Lv.8 专家</option><option value="9">Lv.9 大师</option></select></div>
+<div class="diff-row"><label>Claude 难度</label><select id="diff-black" onchange="setDifficulty()"><option value="1">Lv.1 (30k) </option><option value="2">Lv.2 (28k) </option><option value="3">Lv.3 (25k) </option><option value="4">Lv.4 (22k) </option><option value="5" selected>Lv.5 (18k) </option><option value="6">Lv.6 (14k) </option><option value="7">Lv.7 (10k) </option><option value="8">Lv.8 (5k) </option><option value="9">Lv.9 (1d) </option></select></div>
+<div class="diff-row"><label>OpenCLAW 难度</label><select id="diff-white" onchange="setDifficulty()"><option value="1">Lv.1 (30k) </option><option value="2">Lv.2 (28k) </option><option value="3">Lv.3 (25k) </option><option value="4">Lv.4 (22k) </option><option value="5" selected>Lv.5 (18k) </option><option value="6">Lv.6 (14k) </option><option value="7">Lv.7 (10k) </option><option value="8">Lv.8 (5k) </option><option value="9">Lv.9 (1d) </option></select></div>
 <div class="controls"><button class="btn btn-start" id="btn-start" onclick="startGame()">▶ 开始对局</button><button class="btn btn-pause btn-sm" id="btn-pause" onclick="togglePause()" style="display:none">⏸ 暂停</button>
 <div class="btn-row"><button class="btn-sm" onclick="exportGame()">📋 导出 SGF</button><button class="btn-sm" onclick="copySGFToClipboard()">📎 复制棋谱</button></div>
-<div class="speed-row"><label>慢</label><input type="range" id="speed-slider" min="1" max="10" value="6" oninput="updateSpeed()"><label>快</label></div>
+<div class="speed-row"><label>🐢 慢</label><input type="range" id="speed-slider" min="1" max="10" value="6" oninput="updateSpeed()"><label>🐇 快</label></div>
 </div>
 <div class="stats"><div class="stat-card bc"><h3>黑方提子</h3><div class="value" id="captures-black">0</div></div><div class="stat-card wc"><h3>白方提子</h3><div class="value" id="captures-white">0</div></div><div class="stat-card mc"><h3>手数</h3><div class="value" id="move-count">0</div></div></div>
 <div class="progress-bar"><div class="progress-fill" id="progress-bar" style="width:0%"></div></div>
 <div class="move-log" id="move-log"><h3>棋谱</h3></div>
-<div class="event-bar"><span class="dot done"></span><span id="event-text">准备就绪 · 选择模式后点击开始</span></div>
+<div class="event-bar"><span class="dot done"></span><span id="event-text">选择模式与难度，点击「开始对局」</span></div>
 </div>
 </div>
 <script>
@@ -109,7 +109,7 @@ class GoGame{
   countLiberties(group){const libs=new Set();for(const[r,c]of group)for(const[nr,nc]of this.neighbors(r,c))if(this.board[nr][nc]===0)libs.add(nr*this.size+nc);return libs.size}
   _hash(){let h='';for(let r=0;r<this.size;r++){for(let c=0;c<this.size;c++)h+=this.board[r][c];h+='|'}h+=this.captures[0]+','+this.captures[1]+','+this.currentPlayer;return h}
   _recordHash(){this.boardHistory.add(this._hash())}
-  checkSuperko(r,c){const test=this.clone();test.board[r][c]=test.currentPlayer;const opp=test.currentPlayer===1?2:1;for(const[nr,nc]of test.neighbors(r,c))if(test.board[nr][nc]===opp){const grp=test.getGroup(nr,nc);if(test.countLiberties(grp)===0)for(const[gr,gc]of grp)test.board[gr][gc]=0}const own=test.getGroup(r,c);if(test.countLiberties(own)===0)return false;test.captures[test.currentPlayer-1]+=1;test.currentPlayer=test.currentPlayer===1?2:1;return!this.boardHistory.has(test._hash())}
+  checkSuperko(r,c){const test=this.clone();test.board[r][c]=test.currentPlayer;const opp=test.currentPlayer===1?2:1;let sc=0;for(const[nr,nc]of test.neighbors(r,c))if(test.board[nr][nc]===opp){const grp=test.getGroup(nr,nc);if(test.countLiberties(grp)===0){for(const[gr,gc]of grp){test.board[gr][gc]=0;sc++}}}const own=test.getGroup(r,c);if(test.countLiberties(own)===0)return false;test.captures[test.currentPlayer-1]+=sc;test.currentPlayer=test.currentPlayer===1?2:1;return!this.boardHistory.has(test._hash())}
   isLegalMove(r,c){if(!this.inBounds(r,c)||this.board[r][c]!==0)return false;if(this.koPoint&&this.koPoint.row===r&&this.koPoint.col===c)return false;if(!this.checkSuperko(r,c))return false;return true}
   play(r,c){if(!this.isLegalMove(r,c))return null;this._recordHash();const captured=[];this.board[r][c]=this.currentPlayer;this.koPoint=null;this.passes=0;const opp=this.currentPlayer===1?2:1;for(const[nr,nc]of this.neighbors(r,c))if(this.board[nr][nc]===opp){const grp=this.getGroup(nr,nc);if(this.countLiberties(grp)===0)for(const[gr,gc]of grp){this.board[gr][gc]=0;captured.push([gr,gc])}}this.captures[this.currentPlayer-1]+=captured.length;if(captured.length===1){const own=this.getGroup(r,c);if(own.length===1&&this.countLiberties(own)===1)this.koPoint=captured[0]}const move={row:r,col:c,player:this.currentPlayer,moveNum:this.moveHistory.length+1,captured:captured.length};this.moveHistory.push(move);this.currentPlayer=this.currentPlayer===1?2:1;return move}
   pass(){this._recordHash();this.koPoint=null;this.passes++;this.moveHistory.push({row:-1,col:-1,player:this.currentPlayer,moveNum:this.moveHistory.length+1,captured:0,pass:true});this.currentPlayer=this.currentPlayer===1?2:1;if(this.passes>=2)this.gameOver=true}
@@ -199,7 +199,7 @@ Object.defineProperty(window,'humanMode',{get:function(){return gameMode!=='ai'}
 
 function makeMove(row,col){
   if(!game.isLegalMove(row,col))return false;
-  const r=game.play(row,col);renderer.lastMove=r;renderer.draw();updateUI();
+  const r=game.play(row,col);renderer.lastMove=r;renderer.draw();updateUI();showRankStatus();applyLevelLocks();
   if(game.gameOver){endGame();return true}
   return true
 }
@@ -224,14 +224,14 @@ function startGame(){
   else{scheduleNextMove()}
 }
 function togglePause(){if(!running)return;paused=!paused;document.getElementById('btn-pause').textContent=paused?'▶ 继续':'⏸ 暂停';if(!paused&&!(humanMode&&game.currentPlayer===humanColor))scheduleNextMove();updateUI()}
-function endGame(){running=false;if(timerId)clearTimeout(timerId);const terr=game.estimateTerritory(),bs=terr.black+game.captures[0],ws=terr.white+game.captures[1]+game.komi,w=bs>ws?'Claude 胜！':ws>bs?'OpenCLAW 胜！':'平局！';document.getElementById('event-text').textContent='终局 · 黑: '+bs.toFixed(1)+' vs 白: '+ws.toFixed(1)+' · '+w;document.querySelector('.event-bar .dot').className='dot done';document.getElementById('btn-start').textContent='🔄 重新开始';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').onclick=resetGame;document.getElementById('btn-pause').style.display='none';updateUI()}
+function endGame(){running=false;if(humanMode){let won=(humanColor===1?bs>ws:ws>bs);onGameEndWithLadder(won,humanColor===1?parseInt(document.getElementById('diff-white').value):parseInt(document.getElementById('diff-black').value))};if(timerId)clearTimeout(timerId);const terr=game.estimateTerritory(),bs=terr.black+game.captures[0],ws=terr.white+game.captures[1]+game.komi,w=bs>ws?'Claude 胜！':ws>bs?'OpenCLAW 胜！':'平局！';document.getElementById('event-text').textContent='终局 · 黑: '+bs.toFixed(1)+' vs 白: '+ws.toFixed(1)+' · '+w;document.querySelector('.event-bar .dot').className='dot done';document.getElementById('btn-start').textContent='🔄 重新开始';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').onclick=resetGame;document.getElementById('btn-pause').style.display='none';if(humanMode){let won_105=(humanColor===1?(terr.black+game.captures[0])>(terr.white+game.captures[1]+game.komi):(terr.white+game.captures[1]+game.komi)>(terr.black+game.captures[0]));let aiLvl_=humanColor===1?dw:db;onGameEndWithLadder(won_,aiLvl_);showRankStatus()}updateUI()}
 function resetGame(){
   const ng=new GoGame(19);Object.assign(game,ng);game.board=ng.board.map(r=>[...r]);game.moveHistory=[];game.captures=[0,0];game.koPoint=null;game.currentPlayer=1;game.gameOver=false;game.passes=0;game.boardHistory=new Set();game._recordHash();
   renderer.game=game;renderer.lastMove=null;renderer.hoverPos=null;renderer.draw();
   running=false;paused=false;if(timerId)clearTimeout(timerId);
   document.getElementById('btn-start').textContent='▶ 开始对局';document.getElementById('btn-start').disabled=false;
   document.getElementById('btn-start').onclick=startGame;document.getElementById('btn-pause').style.display='none';
-  document.getElementById('event-text').textContent='准备就绪 · 选择模式后点击开始';document.querySelector('.event-bar .dot').className='dot done';
+  document.getElementById('event-text').textContent='选择模式与难度，点击「开始对局」';document.querySelector('.event-bar .dot').className='dot done';
   updateHumanModeUI();updateUI();
 }
 function exportGame(){downloadSGF(game,{blackName:'Claude Lv.'+aiBlack.difficulty,whiteName:'OpenCLAW Lv.'+aiWhite.difficulty})}
